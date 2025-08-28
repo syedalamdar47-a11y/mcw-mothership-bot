@@ -1,16 +1,13 @@
 {
   "name": "mcw-mothership-bot",
   "version": "1.0.0",
+  "description": "Internal AI Co-Pilot Bot",
   "main": "index.js",
-  "type": "module",
-  "engines": { "node": ">=20.0.0" },
-  "dependencies": {
-    "axios": "^1.7.7",
-    "botbuilder": "^4.21.2",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2"
-  },
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "restify": "^11.1.0",
+    "botbuilder": "^4.22.1"
   }
 }
