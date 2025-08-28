@@ -6,6 +6,7 @@ import axios from 'axios';
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Health check endpoint (important for Azure to confirm app is running)
 app.get('/', (_, res) => res.status(200).send('ok'));
 
 const adapter = new BotFrameworkAdapter({
@@ -20,14 +21,21 @@ class McwBot extends ActivityHandler {
       const text = (context.activity.text || '').trim().toLowerCase();
 
       if (text === 'hi' || text === 'hello') {
-        await context.sendActivity("Hello! I’m your MCW Co-Pilot. Ask me things like:\n• 'DTSP utilization this week?'\n• 'Why were Tampa late-cancels high?'");
+        await context.sendActivity(
+          "Hello! I’m your MCW Co-Pilot. Ask me things like:\n• 'DTSP utilization this week?'\n• 'Why were Tampa late-cancels high?'"
+        );
       } else if (text === 'help') {
-        await context.sendActivity("I can analyze your data, send weekly snapshots, and create Trello tasks. Try: 'Weekend snapshot' or 'Top 3 under-utilized clinicians'.");
+        await context.sendActivity(
+          "I can analyze your data, send weekly snapshots, and create Trello tasks. Try: 'Weekend snapshot' or 'Top 3 under-utilized clinicians'."
+        );
       } else {
         try {
-          const resp = await axios.post(process.env.N8N_WEBHOOK_URL, { userQuestion: context.activity.text });
+          const resp = await axios.post(process.env.N8N_WEBHOOK_URL, {
+            userQuestion: context.activity.text
+          });
           await context.sendActivity(resp?.data?.answer || JSON.stringify(resp.data));
         } catch (err) {
+          console.error("Error contacting N8N service:", err.message);
           await context.sendActivity("Sorry, I couldn’t reach the analyst service.");
         }
       }
@@ -37,6 +45,7 @@ class McwBot extends ActivityHandler {
 }
 const bot = new McwBot();
 
+// Main bot endpoint
 app.post('/api/messages', express.json(), (req, res) => {
   adapter.processActivity(req, res, async (context) => {
     await bot.run(context);
