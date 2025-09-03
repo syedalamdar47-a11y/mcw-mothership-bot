@@ -1,30 +1,48 @@
 import 'dotenv/config';
 import express from 'express';
 import axios from 'axios';
-import botbuilderPkg from 'botbuilder'; // CJS -> import default then destructure
-const { BotFrameworkAdapter, ActivityHandler } = botbuilderPkg;
+import {
+  ActivityHandler,
+  CloudAdapter,
+  ConfigurationServiceClientCredentialFactory,
+  createBotFrameworkAuthenticationFromConfiguration,
+} from 'botbuilder';
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || process.env.WEBSITES_PORT || 8080;
+app.use(express.json());
 
+// Health checks
 app.get('/', (_, res) => res.status(200).send('ok'));
-app.get('/health', (_, res) => res.status(200).json({ status: 'ok' }));
+app.get('/healthz', (_, res) => res.status(200).send('healthy'));
 
-const adapter = new BotFrameworkAdapter({
-  appId: process.env.MicrosoftAppId,
-  appPassword: process.env.MicrosoftAppPassword,
+// --- Auth / Adapter (CloudAdapter + SingleTenant) ---
+const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
+  MicrosoftAppId: process.env.MicrosoftAppId,
+  MicrosoftAppPassword: process.env.MicrosoftAppPassword,
+  MicrosoftAppType: process.env.MicrosoftAppType || 'SingleTenant',
+  MicrosoftAppTenantId: process.env.MicrosoftAppTenantId,
 });
 
-adapter.onTurnError = async (context, err) => {
-  console.error('Bot error:', err);
-  await context.sendActivity('The bot hit an error.');
+const botFrameworkAuthentication =
+  createBotFrameworkAuthenticationFromConfiguration(null, credentialsFactory);
+
+const adapter = new CloudAdapter(botFrameworkAuthentication);
+
+adapter.onTurnError = async (context, error) => {
+  console.error('OnTurnError:', error);
+  await context.sendActivity('Sorry—something went wrong on my side.');
 };
 
+// --- Bot logic ---
 class McwBot extends ActivityHandler {
   constructor() {
     super();
     this.onMessage(async (context, next) => {
-      const text = (context.activity.text || '').trim().toLowerCase();
+      const incoming = (context.activity.text || '').trim();
+      console.log('Incoming message:', incoming);
+
+      const text = incoming.toLowerCase();
 
       if (text === 'hi' || text === 'hello') {
         await context.sendActivity(
@@ -36,14 +54,12 @@ class McwBot extends ActivityHandler {
         );
       } else {
         try {
-          const resp = await axios.post(
-            process.env.N8N_WEBHOOK_URL,
-            { userQuestion: context.activity.text },
-            { timeout: 15000 }
-          );
-          await context.sendActivity(resp?.data?.answer ?? JSON.stringify(resp.data));
-        } catch (e) {
-          console.error('n8n call failed:', e?.message);
+          const resp = await axios.post(process.env.N8N_WEBHOOK_URL, {
+            userQuestion: incoming,
+          });
+          await context.sendActivity(resp?.data?.answer || JSON.stringify(resp.data));
+        } catch (err) {
+          console.error('n8n webhook error:', err?.message);
           await context.sendActivity("Sorry, I couldn’t reach the analyst service.");
         }
       }
@@ -53,12 +69,10 @@ class McwBot extends ActivityHandler {
 }
 const bot = new McwBot();
 
-app.post('/api/messages', express.json(), (req, res) => {
-  adapter.processActivity(req, res, async (context) => {
-    await bot.run(context);
-  });
+// Bot Service endpoint
+app.post('/api/messages', (req, res) => {
+  adapter.process(req, res, (context) => bot.run(context));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Boot: MCW Co-Pilot server listening on ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Boot: MCW Co-Pilot server listening on ${PORT}`));
+
