@@ -16,7 +16,7 @@ app.use(express.json());
 app.get('/', (_, res) => res.status(200).send('ok'));
 app.get('/healthz', (_, res) => res.status(200).send('healthy'));
 
-// --- Auth / Adapter (CloudAdapter + SingleTenant) ---
+// ---- Auth / Adapter (Single-Tenant) ----
 const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
   MicrosoftAppId: process.env.MicrosoftAppId,
   MicrosoftAppPassword: process.env.MicrosoftAppPassword,
@@ -30,11 +30,11 @@ const botFrameworkAuthentication =
 const adapter = new CloudAdapter(botFrameworkAuthentication);
 
 adapter.onTurnError = async (context, error) => {
-  console.error('OnTurnError:', error);
+  console.error('Bot error:', error);
   await context.sendActivity('Sorry—something went wrong on my side.');
 };
 
-// --- Bot logic ---
+// ---- Bot ----
 class McwBot extends ActivityHandler {
   constructor() {
     super();
@@ -59,20 +59,20 @@ class McwBot extends ActivityHandler {
           });
           await context.sendActivity(resp?.data?.answer || JSON.stringify(resp.data));
         } catch (err) {
-          console.error('n8n webhook error:', err?.message);
+          console.error('n8n call failed:', err?.message);
           await context.sendActivity("Sorry, I couldn’t reach the analyst service.");
         }
       }
+
       await next();
     });
   }
 }
 const bot = new McwBot();
 
-// Bot Service endpoint
+// Endpoint Bot Service calls
 app.post('/api/messages', (req, res) => {
   adapter.process(req, res, (context) => bot.run(context));
 });
 
 app.listen(PORT, () => console.log(`Boot: MCW Co-Pilot server listening on ${PORT}`));
-
